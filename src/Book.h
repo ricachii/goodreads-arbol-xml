@@ -4,6 +4,7 @@
 
 // Representa un libro similar referenciado dentro del XML de un libro
 struct SimilarBook {
+    std::string id;
     std::string title;
     std::string isbn;
     int         publicationYear;

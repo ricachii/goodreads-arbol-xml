@@ -4,6 +4,8 @@
 #include <vector>
 
 /*
+ * Clase: XMLParser
+ * ----------------
  * Carga datos de Book desde archivos XML de GoodReads usando PugiXML.
  *
  * Estructura típica del XML (campos que nos interesan):
@@ -30,10 +32,31 @@
  */
 class XMLParser {
 public:
-    // Parsea un único archivo XML y retorna el Book que representa.
-    // Retorna false si el archivo no pudo ser parseado.
+    /*
+     * parseFile
+     * ---------
+     * Parsea un único archivo XML del dataset GoodReads y rellena el Book de salida.
+     * Maneja campos numéricos vacíos (publicationYear, numPages, averageRating)
+     * asignándoles 0 en lugar de lanzar una excepción.
+     *
+     * Parámetros:
+     *   filepath — ruta absoluta o relativa al archivo .xml.
+     *   out      — Book donde se escriben los datos extraídos.
+     *
+     * Retorna true si el archivo fue parseado correctamente, false en caso contrario.
+     */
     static bool parseFile(const std::string& filepath, Book& out);
 
-    // Carga todos los archivos .xml dentro de `directory` y retorna un vector de Books.
+    /*
+     * loadDirectory
+     * -------------
+     * Carga recursivamente todos los archivos .xml dentro de `directory`,
+     * parseando cada uno con parseFile() y mostrando una barra de progreso.
+     *
+     * Parámetro:
+     *   directory — ruta a la carpeta que contiene los archivos XML.
+     *
+     * Retorna un vector con todos los Books cargados exitosamente.
+     */
     static std::vector<Book> loadDirectory(const std::string& directory);
 };

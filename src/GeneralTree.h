@@ -3,68 +3,138 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 
 /*
- * Árbol general de libros.
+ * Clase: GeneralTree
+ * ------------------
+ * Árbol general de libros construido a partir del dataset GoodReads.
  *
- * Estrategia de construcción (puedes ajustar el enfoque):
- *   1. Cargar cada Book desde los 10 000 XML en un mapa plano: id -> TreeNode*
- *   2. Para cada nodo, buscar sus similarBooks en el mapa y agregarlos como hijos.
- *   3. Un nodo sin padre pasa a ser hijo directo de la raíz virtual.
- *      (Un nodo no tiene padre si su id nunca aparece en los similar_books de otro libro.)
+ * Cada nodo del árbol representa un libro. Los hijos de un nodo son los libros
+ * que aparecen listados en su sección <similar_books> dentro del XML.
  *
- * La raíz virtual tiene un Book vacío y sirve solo como punto de entrada al árbol.
+ * Dado que las relaciones de similitud en GoodReads son bidireccionales
+ * (si A tiene a B como similar, B también tiene a A), el dataset forma un grafo
+ * con ciclos. Para convertirlo en un árbol sin ciclos se aplica un recorrido
+ * DFS durante la construcción: cada nodo se incorpora al árbol una sola vez,
+ * la primera vez que es alcanzado desde algún vecino.
+ *
+ * Los libros que ningún otro libro reclama como hijo quedan como hijos directos
+ * de una raíz virtual (nodo con Book vacío), formando así un bosque de expansión
+ * con un único punto de entrada.
+ *
+ * Uso típico:
+ *   GeneralTree arbol;
+ *   for (const Book& b : libros) arbol.addBook(b);
+ *   arbol.build();
+ *   arbol.listar();
  */
 class GeneralTree {
 public:
     GeneralTree();
     ~GeneralTree();
 
-    // Inserta un libro en el mapa interno (llamar mientras se cargan los XML).
+    /*
+     * addBook
+     * -------
+     * Registra un libro en el mapa interno del árbol.
+     * Debe llamarse una vez por cada libro cargado, antes de invocar build().
+     *
+     * Parámetro:
+     *   book — libro a insertar (se crea un TreeNode con copia del Book).
+     */
     void addBook(const Book& book);
 
-    // Una vez cargados todos los libros, conecta los enlaces padre-hijo y coloca
-    // los huérfanos bajo la raíz virtual. Llamar una sola vez después de todos los addBook().
+    /*
+     * build
+     * -----
+     * Construye la estructura del árbol conectando los nodos según las relaciones
+     * de similitud. Debe llamarse una única vez, después de todos los addBook().
+     *
+     * Estrategia:
+     *   1. DFS iterativo sobre el mapa de nodos para asignar hijos sin crear ciclos.
+     *   2. Los nodos que ningún otro reclamó como hijo pasan a ser hijos de la raíz virtual.
+     */
     void build();
 
-    // -------------------------------------------------------------------------
-    // Funciones requeridas
-    // -------------------------------------------------------------------------
+    /*
+     * listar
+     * ------
+     * Recorre el árbol en preorder (nodo actual antes que sus hijos) e imprime
+     * el ID de cada libro en el flujo de salida indicado.
+     *
+     * El recorrido es iterativo (pila explícita) para evitar desbordamiento de
+     * pila en árboles con muchos niveles.
+     *
+     * Parámetro:
+     *   os — flujo de salida (por defecto std::cout; se puede pasar un std::ofstream
+     *        para escribir directamente en un archivo).
+     *
+     * Complejidad: O(n), donde n es el número de nodos en el árbol.
+     */
+    void listar(std::ostream& os = std::cout) const;
 
-    // Lista los IDs de todos los libros en preorder (raíz primero, luego hijos de izquierda a derecha).
-    void listar() const;
-
-    // Elimina del árbol todos los nodos cuyo averageRating <= r.
-    // También elimina todos los descendientes del nodo eliminado.
-    // Pista: usar recorrido post-order para evaluar hijos antes que el padre.
+    /*
+     * borrarRatings
+     * -------------
+     * Elimina del árbol todos los libros cuyo rating promedio es menor o igual a r.
+     * Cuando se elimina un nodo, también se eliminan todos sus descendientes
+     * (el subárbol completo queda fuera del árbol).
+     *
+     * El recorrido es post-order recursivo: se evalúan los hijos antes que el padre,
+     * lo que garantiza que la memoria de los subárboles eliminados se libere
+     * correctamente de abajo hacia arriba.
+     *
+     * Parámetro:
+     *   r — umbral de rating (se eliminan los nodos con averageRating <= r).
+     *
+     * Complejidad: O(n), donde n es el número de nodos en el árbol.
+     */
     void borrarRatings(double r);
 
-    // Lista los IDs de libros donde TODOS los libros similares tienen publicationYear
-    // estrictamente mayor que el publicationYear del libro.
-    // Usa solo el campo similarBooks ya almacenado en cada Book —
-    // no se requiere búsqueda cruzada en el árbol.
-    void precursores(const std::string& id) const;
+    /*
+     * precursores
+     * -----------
+     * Recorre todo el árbol e imprime el ID de cada libro que cumpla la siguiente
+     * condición: todos sus libros similares fueron publicados en un año
+     * estrictamente posterior al año de publicación del libro.
+     *
+     * Un libro sin similares no se reporta (la condición requiere al menos uno).
+     * La comparación usa únicamente la información almacenada en el campo
+     * similarBooks de cada nodo, sin realizar búsquedas adicionales en el árbol.
+     *
+     * Nota: libros similares sin año registrado (publicationYear == 0) se tratan
+     * como anteriores al libro, por lo que su presencia excluye al nodo del resultado.
+     *
+     * Parámetros:
+     *   id — reservado para uso futuro (actualmente el recorrido es global).
+     *   os — flujo de salida (por defecto std::cout).
+     *
+     * Complejidad: O(n * m), donde n es el número de nodos y m el promedio
+     *              de libros similares por nodo.
+     */
+    void precursores(const std::string& id, std::ostream& os = std::cout) const;
+
+    /*
+     * stats
+     * -----
+     * Imprime estadísticas generales del árbol:
+     *   - Número total de nodos
+     *   - Altura máxima (profundidad del nodo más lejano de la raíz)
+     *   - Promedio de hijos por nodo
+     *   - ID del libro con más hijos directos en el árbol
+     *
+     * Parámetro:
+     *   os — flujo de salida (por defecto std::cout).
+     *
+     * Complejidad: O(n).
+     */
+    void stats(std::ostream& os = std::cout) const;
 
 private:
-    TreeNode* root_;   // raíz virtual (Book vacío)
-
-    // Búsqueda rápida por ID de libro — necesaria para conectar similar_books como hijos.
+    TreeNode* root_;
     std::unordered_map<std::string, TreeNode*> nodeMap_;
 
-    // -------------------------------------------------------------------------
-    // Métodos auxiliares privados — implementar estos para mantener limpios los métodos públicos
-    // -------------------------------------------------------------------------
-
-    // Recorrido preorder recursivo comenzando en `node`.
-    void listarHelper(const TreeNode* node) const;
-
-    // Auxiliar recursivo: elimina hijos cuyo rating <= r,
-    // retorna true si este nodo mismo debe ser eliminado.
     bool borrarRatingsHelper(TreeNode* node, double r);
-
-    // Auxiliar recursivo: visita cada nodo y verifica la condición de precursores.
-    void precursoresHelper(const TreeNode* node, std::vector<std::string>& result) const;
-
-    // Libera el subárbol con raíz en `node`.
     void deleteSubtree(TreeNode* node);
 };

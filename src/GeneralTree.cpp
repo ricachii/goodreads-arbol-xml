@@ -1,13 +1,13 @@
 #include "GeneralTree.h"
 #include <iostream>
+#include <stack>
+#include <unordered_set>
 
 // ---------------------------------------------------------------------------
 // Constructor / destructor
 // ---------------------------------------------------------------------------
 
 GeneralTree::GeneralTree() {
-    // Crear la raíz virtual con un Book vacío.
-    // Su id puede ser algo como "__root__" para no confundirla con un libro real.
     root_ = new TreeNode(Book{});
     root_->book.id = "__root__";
 }
@@ -20,107 +20,183 @@ GeneralTree::~GeneralTree() {
 // addBook
 // ---------------------------------------------------------------------------
 void GeneralTree::addBook(const Book& book) {
-    // TODO:
-    //   1. Crear un nuevo TreeNode para `book`.
-    //   2. Insertarlo en nodeMap_ con clave = book.id.
-    //
-    // NO conectar hijos todavía — esperar a build().
+    if (nodeMap_.count(book.id)) {
+        std::cerr << "Advertencia: ID duplicado ignorado -> " << book.id << "\n";
+        return;
+    }
+    nodeMap_[book.id] = new TreeNode(book);
 }
 
 // ---------------------------------------------------------------------------
 // build
 // ---------------------------------------------------------------------------
+// PROBLEMA DEL DATASET: los similar_books de GoodReads son bidireccionales:
+// si A tiene a B como similar, B también tiene a A. Eso crea ciclos (A→B→A→…).
+// Solución: construir un bosque de expansión con DFS — cada nodo se visita
+// una sola vez, por lo que nunca se puede formar un ciclo.
+// ---------------------------------------------------------------------------
 void GeneralTree::build() {
-    // TODO:
-    //   Paso 1 — marcar qué IDs aparecen como libro similar en al menos un nodo.
-    //     Usar un unordered_set<string> de IDs "reclamados".
-    //     Para cada nodo en nodeMap_, iterar sus book.similarBooks e insertar
-    //     cada id similar en el conjunto.
-    //
-    //   Paso 2 — conectar hijos.
-    //     Para cada nodo N en nodeMap_:
-    //       Para cada SimilarBook S en N.book.similarBooks:
-    //         Si nodeMap_ contiene S (comparar por id o isbn — elegir uno y ser consistente):
-    //           N.children.push_back(nodeMap_[S.id])
-    //
-    //   Paso 3 — colgar huérfanos en la raíz virtual.
-    //     Para cada nodo N en nodeMap_:
-    //       Si N.book.id NO está en el conjunto "reclamados":
-    //         root_->children.push_back(N)
-    //
-    // NOTA: los similar_books en el XML usan IDs. Asegúrate de comparar
-    //       siempre el mismo campo (id vs isbn) de forma consistente.
+    std::unordered_set<std::string> visited;
+
+    for (auto& [startId, startNode] : nodeMap_) {
+        if (visited.count(startId)) continue;
+
+        visited.insert(startId);
+        std::stack<TreeNode*> pila;
+        pila.push(startNode);
+
+        while (!pila.empty()) {
+            TreeNode* curr = pila.top(); pila.pop();
+            for (const SimilarBook& sb : curr->book.similarBooks) {
+                auto it = nodeMap_.find(sb.id);
+                if (it != nodeMap_.end() && !visited.count(sb.id)) {
+                    visited.insert(sb.id);
+                    curr->children.push_back(it->second);
+                    pila.push(it->second);
+                }
+            }
+        }
+    }
+
+    // Nodos que nadie reclamó como hijo → van directo bajo la raíz virtual
+    std::unordered_set<std::string> claimed;
+    for (auto& [id, node] : nodeMap_)
+        for (const TreeNode* hijo : node->children)
+            claimed.insert(hijo->book.id);
+
+    for (auto& [id, node] : nodeMap_)
+        if (!claimed.count(id))
+            root_->children.push_back(node);
 }
 
 // ---------------------------------------------------------------------------
-// listar  — recorrido preorder
+// listar — preorder ITERATIVO
+// Se insertan los hijos en orden inverso en la pila para que al hacer pop
+// se procesen de izquierda a derecha, respetando el orden preorder.
+// El uso de pila explícita evita stack overflow en árboles muy profundos.
 // ---------------------------------------------------------------------------
-void GeneralTree::listar() const {
-    // Omitir la raíz virtual; comenzar desde sus hijos.
-    for (const TreeNode* hijo : root_->children)
-        listarHelper(hijo);
+void GeneralTree::listar(std::ostream& os) const {
+    std::stack<const TreeNode*> pila;
+    for (auto it = root_->children.rbegin(); it != root_->children.rend(); ++it)
+        pila.push(*it);
+
+    while (!pila.empty()) {
+        const TreeNode* node = pila.top(); pila.pop();
+        os << node->book.id << "\n";
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            pila.push(*it);
+    }
 }
 
-void GeneralTree::listarHelper(const TreeNode* node) const {
-    // TODO:
-    //   1. Imprimir node->book.id  (visitar antes de los hijos = preorder).
-    //   2. Llamar listarHelper recursivamente en cada hijo.
-}
-
 // ---------------------------------------------------------------------------
-// borrarRatings
+// borrarRatings — post-order RECURSIVO
+// Se procesan los hijos antes que el padre (post-order) para poder liberar
+// la memoria de los subárboles eliminados de abajo hacia arriba sin perder
+// referencias. El árbol ya no tiene ciclos tras build(), por lo que la
+// recursión termina siempre.
 // ---------------------------------------------------------------------------
 void GeneralTree::borrarRatings(double r) {
-    // TODO:
-    //   Llamar borrarRatingsHelper en cada hijo de root_.
-    //   Guardar los hijos que sobreviven (rating > r) en una nueva lista y
-    //   reemplazar root_->children con esa lista.
-    //
-    //   Ver borrarRatingsHelper para la lógica recursiva.
+    std::vector<TreeNode*> sobrevivientes;
+    for (TreeNode* hijo : root_->children) {
+        if (!borrarRatingsHelper(hijo, r))
+            sobrevivientes.push_back(hijo);
+        else
+            deleteSubtree(hijo);
+    }
+    root_->children = sobrevivientes;
 }
 
 bool GeneralTree::borrarRatingsHelper(TreeNode* node, double r) {
-    // TODO:
-    //   Esta función retorna true si `node` debe ser ELIMINADO.
-    //
-    //   Algoritmo (post-order para procesar hijos antes que el padre):
-    //     1. Llamar borrarRatingsHelper recursivamente en cada hijo.
-    //        Construir una nueva lista de hijos conservando solo los que retornaron false.
-    //        Para los hijos que retornaron true, llamar deleteSubtree sobre ellos.
-    //     2. Reemplazar node->children con los sobrevivientes.
-    //     3. Retornar (node->book.averageRating <= r).
-    //        Si es true, el llamador eliminará este nodo y su subárbol restante.
-    return false; // placeholder
+    std::vector<TreeNode*> sobrevivientes;
+    for (TreeNode* hijo : node->children) {
+        if (!borrarRatingsHelper(hijo, r))
+            sobrevivientes.push_back(hijo);
+        else
+            deleteSubtree(hijo);
+    }
+    node->children = sobrevivientes;
+    return node->book.averageRating <= r;
 }
 
 // ---------------------------------------------------------------------------
-// precursores
+// precursores — recorrido ITERATIVO
+// Para cada nodo se verifica que su lista de similarBooks sea no vacía y que
+// todos los años de publicación de esos libros similares sean estrictamente
+// mayores al año del nodo. Si un libro similar tiene año 0 (no registrado en
+// el XML) se lo trata como anterior, excluyendo al nodo del resultado.
 // ---------------------------------------------------------------------------
-void GeneralTree::precursores(const std::string& /*id*/) const {
-    // NOTA: El parámetro `id` podría usarse para filtrar desde un subárbol —
-    //       releer el enunciado y ajustar según corresponda.
-    //
-    // TODO:
-    //   1. Recolectar resultados con precursoresHelper.
-    //   2. Imprimir cada ID del vector resultado.
-    std::vector<std::string> resultado;
-    precursoresHelper(root_, resultado);
-    for (const auto& bid : resultado)
-        std::cout << bid << "\n";
+void GeneralTree::precursores(const std::string& /*id*/, std::ostream& os) const {
+    std::stack<const TreeNode*> pila;
+    for (auto it = root_->children.rbegin(); it != root_->children.rend(); ++it)
+        pila.push(*it);
+
+    while (!pila.empty()) {
+        const TreeNode* node = pila.top(); pila.pop();
+
+        const auto& sibs = node->book.similarBooks;
+        if (!sibs.empty()) {
+            bool todos_posteriores = true;
+            for (const SimilarBook& sb : sibs) {
+                // año 0 = no registrado en el XML; se trata como anterior → excluye el nodo
+                if (sb.publicationYear == 0 || sb.publicationYear <= node->book.publicationYear) {
+                    todos_posteriores = false;
+                    break;
+                }
+            }
+            if (todos_posteriores)
+                os << node->book.id << "\n";
+        }
+
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            pila.push(*it);
+    }
 }
 
-void GeneralTree::precursoresHelper(const TreeNode* node, std::vector<std::string>& resultado) const {
-    // TODO:
-    //   Ignorar la raíz virtual (id == "__root__").
-    //
-    //   Para cada nodo real:
-    //     Condición: node->book.similarBooks no está vacío Y
-    //                cada SimilarBook tiene publicationYear > node->book.publicationYear.
-    //     Si la condición se cumple, agregar node->book.id a resultado.
-    //
-    //   Recurrir en los hijos.
-    for (const TreeNode* hijo : node->children)
-        precursoresHelper(hijo, resultado);
+// ---------------------------------------------------------------------------
+// stats — recorrido BFS para calcular altura, promedio de hijos y nodo más conectado
+// ---------------------------------------------------------------------------
+void GeneralTree::stats(std::ostream& os) const {
+    if (root_->children.empty()) {
+        os << "El árbol está vacío.\n";
+        return;
+    }
+
+    int alturaMax      = 0;
+    int totalNodos     = 0;
+    int totalHijos     = 0;
+    int maxHijos       = 0;
+    std::string idMasConectado;
+
+    // BFS con pares (nodo, profundidad)
+    std::stack<std::pair<const TreeNode*, int>> pila;
+    for (auto it = root_->children.rbegin(); it != root_->children.rend(); ++it)
+        pila.push({*it, 1});
+
+    while (!pila.empty()) {
+        auto [node, prof] = pila.top(); pila.pop();
+
+        totalNodos++;
+        int nhijos = static_cast<int>(node->children.size());
+        totalHijos += nhijos;
+
+        if (prof > alturaMax) alturaMax = prof;
+
+        if (nhijos > maxHijos) {
+            maxHijos       = nhijos;
+            idMasConectado = node->book.id;
+        }
+
+        for (auto it = node->children.rbegin(); it != node->children.rend(); ++it)
+            pila.push({*it, prof + 1});
+    }
+
+    double promHijos = (totalNodos > 0) ? static_cast<double>(totalHijos) / totalNodos : 0.0;
+
+    os << "=== Estadisticas del arbol ===\n"
+       << "  Nodos totales       : " << totalNodos     << "\n"
+       << "  Altura maxima       : " << alturaMax      << "\n"
+       << "  Promedio de hijos   : " << promHijos      << "\n"
+       << "  Libro mas conectado : " << idMasConectado << " (" << maxHijos << " hijos)\n";
 }
 
 // ---------------------------------------------------------------------------

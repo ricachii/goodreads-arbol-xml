@@ -1,0 +1,405 @@
+\documentclass[12pt, a4paper]{article}
+
+% ── Paquetes ──────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+% ── Estilo de código C++ ──────────────────────────────────────────────────────
+\definecolor{codegreen}{rgb}{0.1,0.5,0.1}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codeblue}{rgb}{0.1,0.1,0.7}
+\definecolor{backcolour}{rgb}{0.97,0.97,0.97}
+
+\lstdefinestyle{cpp}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codeblue}\bfseries,
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{orange},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    captionpos=b,
+    numbers=left,
+    numbersep=5pt,
+    tabsize=4,
+    language=C++,
+    showstringspaces=false,
+    frame=single,
+    rulecolor=\color{gray!30}
+}
+\lstset{style=cpp}
+
+% ── Portada ───────────────────────────────────────────────────────────────────
+\title{
+    \vspace{2cm}
+    \textbf{Entregable 2: XML} \\[0.5em]
+    \large Árbol General sobre Dataset GoodReads \\[0.3em]
+    \normalsize Estructura de Datos --- Semestre 1, 2026
+}
+\author{
+    Nicolás Renato Ricciardi Acuña \\
+    Enzo Gabriel Levancini Arriagada
+}
+\date{\today}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Introducción}
+
+Este proyecto implementa un \textbf{árbol general} en C++17 a partir de 10.000 archivos XML
+del dataset GoodReads. Cada archivo describe un libro con sus metadatos (título, ISBN,
+rating, año de publicación, etc.) y una lista de libros similares que define la estructura
+jerárquica del árbol.
+
+El sistema soporta tres operaciones principales sobre el árbol:
+\begin{enumerate}
+    \item \texttt{listar} — recorrido preorder que imprime los IDs de todos los libros.
+    \item \texttt{borrar\_ratings(r)} — elimina todos los libros con rating promedio $\leq r$.
+    \item \texttt{precursores(id)} — lista los libros cuyo año de publicación es menor
+          al de \textit{todos} sus libros similares.
+\end{enumerate}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Estructura del proyecto}
+
+\begin{verbatim}
+Tarea2/
+├── CMakeLists.txt          <- configuración de compilación (CMake + C++17)
+├── README.md
+├── data/                   <- 10.000 archivos .xml del dataset GoodReads
+├── libs/
+│   └── pugixml/            <- librería PugiXML para parsear XML
+└── src/
+    ├── Book.h              <- structs Book y SimilarBook
+    ├── TreeNode.h          <- nodo del árbol general
+    ├── GeneralTree.h/.cpp  <- árbol general con las tres funciones requeridas
+    ├── XMLParser.h/.cpp    <- carga y parseo de archivos XML
+    └── main.cpp            <- punto de entrada
+\end{verbatim}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Estructuras de datos}
+
+\subsection{Book y SimilarBook}
+
+\texttt{SimilarBook} almacena la información mínima de un libro referenciado en la
+sección \texttt{<similar\_books>} del XML. \texttt{Book} contiene todos los campos
+relevantes de un libro, incluyendo su lista de similares.
+
+\begin{lstlisting}
+struct SimilarBook {
+    std::string id;
+    std::string title;
+    std::string isbn;
+    int         publicationYear;
+};
+
+struct Book {
+    std::string              id;
+    std::string              title;
+    std::string              isbn;
+    int                      publicationYear;
+    std::string              language;
+    std::string              description;
+    double                   averageRating;
+    int                      numPages;
+    std::vector<SimilarBook> similarBooks;
+};
+\end{lstlisting}
+
+\subsection{TreeNode}
+
+Cada nodo del árbol almacena un \texttt{Book} y un vector de punteros a sus hijos.
+Se eligió \texttt{std::vector} sobre la representación hijo-izquierdo/hermano-derecho
+para simplificar los recorridos iterativos.
+
+\begin{lstlisting}
+struct TreeNode {
+    Book                   book;
+    std::vector<TreeNode*> children;
+
+    explicit TreeNode(const Book& b) : book(b) {}
+};
+\end{lstlisting}
+
+\subsection{GeneralTree}
+
+La clase principal del árbol mantiene:
+\begin{itemize}
+    \item \texttt{root\_} — raíz virtual con \texttt{Book} vacío, punto de entrada único.
+    \item \texttt{nodeMap\_} — tabla hash \texttt{unordered\_map<string, TreeNode*>} para
+          buscar cualquier nodo por ID en tiempo $O(1)$ durante la construcción.
+\end{itemize}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Parseo de XML}
+
+Se utiliza la librería \textbf{PugiXML} para leer los archivos XML. La estructura
+real de cada archivo en el dataset es:
+
+\begin{verbatim}
+<GoodreadsResponse>
+  <book>
+    <id>...</id>
+    <title>...</title>
+    <publication_year>...</publication_year>
+    <average_rating>...</average_rating>
+    <similar_books>
+      <book>
+        <id>...</id>
+        <publication_year>...</publication_year>
+      </book>
+    </similar_books>
+  </book>
+</GoodreadsResponse>
+\end{verbatim}
+
+\texttt{XMLParser::parseFile()} extrae cada campo usando \texttt{child\_value()} de
+PugiXML y convierte los valores numéricos con lambdas defensivas que retornan 0
+ante campos vacíos, evitando excepciones:
+
+\begin{lstlisting}
+auto toInt = [](const char* s) -> int {
+    try { return (s && *s) ? std::stoi(s) : 0; }
+    catch (...) { return 0; }
+};
+\end{lstlisting}
+
+\texttt{XMLParser::loadDirectory()} itera recursivamente la carpeta \texttt{data/}
+con \texttt{std::filesystem} y muestra una barra de progreso durante la carga.
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Construcción del árbol}
+
+\subsection{Problema: similitudes bidireccionales}
+
+En el dataset GoodReads, las relaciones de similitud son \textbf{simétricas}: si el
+libro A lista a B como similar, B también lista a A. Esto convierte el conjunto de
+relaciones en un \textbf{grafo con ciclos}, que no puede representarse directamente
+como árbol.
+
+\subsection{Solución: DFS con conjunto de visitados}
+
+Para convertir el grafo en un árbol sin ciclos se aplica un \textbf{DFS iterativo}
+sobre todos los nodos. Cada nodo se incorpora al árbol exactamente una vez (la primera
+vez que es alcanzado), garantizando que no se formen ciclos:
+
+\begin{lstlisting}
+void GeneralTree::build() {
+    std::unordered_set<std::string> visited;
+
+    for (auto& [startId, startNode] : nodeMap_) {
+        if (visited.count(startId)) continue;
+        visited.insert(startId);
+        std::stack<TreeNode*> pila;
+        pila.push(startNode);
+
+        while (!pila.empty()) {
+            TreeNode* curr = pila.top(); pila.pop();
+            for (const SimilarBook& sb : curr->book.similarBooks) {
+                auto it = nodeMap_.find(sb.id);
+                if (it != nodeMap_.end() && !visited.count(sb.id)) {
+                    visited.insert(sb.id);
+                    curr->children.push_back(it->second);
+                    pila.push(it->second);
+                }
+            }
+        }
+    }
+    // Nodos sin padre -> hijos de la raiz virtual
+    std::unordered_set<std::string> claimed;
+    for (auto& [id, node] : nodeMap_)
+        for (const TreeNode* hijo : node->children)
+            claimed.insert(hijo->book.id);
+
+    for (auto& [id, node] : nodeMap_)
+        if (!claimed.count(id))
+            root_->children.push_back(node);
+}
+\end{lstlisting}
+
+Los nodos que ningún otro nodo reclama como hijo se colocan directamente bajo la
+raíz virtual, formando un \textbf{bosque de expansión} con un único punto de entrada.
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Función listar}
+
+Recorre el árbol en \textbf{preorder} (nodo actual antes que sus hijos) e imprime
+el ID de cada libro. El recorrido es \textbf{iterativo} usando una pila explícita
+para evitar desbordamiento de pila con árboles profundos.
+
+Los hijos se insertan en la pila en \textbf{orden inverso} para que al hacer
+\textit{pop} se procesen de izquierda a derecha, manteniendo el orden preorder correcto.
+
+\begin{lstlisting}
+void GeneralTree::listar(std::ostream& os) const {
+    std::stack<const TreeNode*> pila;
+    for (auto it = root_->children.rbegin();
+         it != root_->children.rend(); ++it)
+        pila.push(*it);
+
+    while (!pila.empty()) {
+        const TreeNode* node = pila.top(); pila.pop();
+        os << node->book.id << "\n";
+        for (auto it = node->children.rbegin();
+             it != node->children.rend(); ++it)
+            pila.push(*it);
+    }
+}
+\end{lstlisting}
+
+\textbf{Complejidad:} $O(n)$, donde $n$ es el número de nodos.
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Función borrar\_ratings}
+
+Elimina del árbol todos los nodos cuyo \texttt{averageRating} $\leq r$. Al eliminar
+un nodo se elimina también todo su subárbol (sus descendientes pierden su único
+camino hacia la raíz).
+
+\subsection{Algoritmo post-order}
+
+Se usa un recorrido \textbf{post-order recursivo}: se evalúan los hijos \textit{antes}
+que el padre. Esto permite liberar la memoria de los subárboles de abajo hacia arriba
+sin perder referencias.
+
+\begin{lstlisting}
+bool GeneralTree::borrarRatingsHelper(TreeNode* node, double r) {
+    std::vector<TreeNode*> sobrevivientes;
+    for (TreeNode* hijo : node->children) {
+        if (!borrarRatingsHelper(hijo, r))
+            sobrevivientes.push_back(hijo);
+        else
+            deleteSubtree(hijo);
+    }
+    node->children = sobrevivientes;
+    return node->book.averageRating <= r;
+}
+\end{lstlisting}
+
+La función auxiliar retorna \texttt{true} si el nodo debe ser eliminado. El llamador
+se encarga de liberarlo con \texttt{deleteSubtree()}.
+
+\textbf{Complejidad:} $O(n)$.
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Función precursores}
+
+Lista los IDs de todos los libros que cumplen la siguiente condición:
+
+\[
+\forall\, s \in \text{similarBooks}(v): \quad s.\text{publicationYear} > v.\text{publicationYear}
+\]
+
+Es decir, el libro fue publicado \textit{antes} que todos sus libros similares,
+y tiene al menos un libro similar.
+
+\subsection{Manejo de años no registrados}
+
+Si un libro similar tiene \texttt{publicationYear == 0} (campo vacío en el XML),
+se trata como \textit{anterior} al libro evaluado, excluyéndolo del resultado.
+Esto evita falsos positivos por datos faltantes.
+
+\begin{lstlisting}
+for (const SimilarBook& sb : sibs) {
+    // año 0 = no registrado; se trata como anterior
+    if (sb.publicationYear == 0 ||
+        sb.publicationYear <= node->book.publicationYear) {
+        todos_posteriores = false;
+        break;
+    }
+}
+\end{lstlisting}
+
+El recorrido es \textbf{iterativo} sobre todo el árbol, usando la misma técnica de
+pila explícita que \texttt{listar}.
+
+\textbf{Complejidad:} $O(n \cdot m)$, donde $m$ es el promedio de libros similares
+por nodo.
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Estadísticas del árbol}
+
+La función \texttt{stats()} calcula en un único recorrido $O(n)$:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Métrica} & \textbf{Descripción} \\
+\midrule
+Nodos totales & Cantidad de libros en el árbol \\
+Altura máxima & Profundidad del nodo más lejano de la raíz virtual \\
+Promedio de hijos & Total de hijos / total de nodos \\
+Libro más conectado & ID del nodo con mayor cantidad de hijos directos \\
+\bottomrule
+\end{tabular}
+\caption{Métricas calculadas por \texttt{stats()}}
+\end{table}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Compilación y ejecución}
+
+\subsection{Requisitos}
+\begin{itemize}
+    \item CMake $\geq$ 3.16
+    \item Compilador con soporte C++17 (GCC 8+, Clang 7+, MSVC 2017+)
+\end{itemize}
+
+\subsection{Pasos}
+\begin{verbatim}
+mkdir build
+cd build
+cmake ..
+cmake --build .
+./tarea2
+\end{verbatim}
+
+Los resultados se guardan automáticamente en tres archivos dentro de \texttt{build/}:
+\begin{itemize}
+    \item \texttt{listar.txt} — IDs en preorder
+    \item \texttt{listar\_post\_borrado.txt} — IDs tras eliminar libros con rating $\leq 3.5$
+    \item \texttt{precursores.txt} — IDs de libros precursores
+\end{itemize}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\section{Decisiones de diseño}
+
+\begin{description}[style=nextline]
+    \item[Raíz virtual]
+    Se usa un nodo raíz con \texttt{Book} vacío en lugar de elegir un libro arbitrario
+    como raíz real. Esto permite que el árbol sea un \textit{bosque} sin forzar una
+    jerarquía artificial.
+
+    \item[Recorridos iterativos]
+    \texttt{listar} y \texttt{precursores} usan pila explícita en lugar de recursión
+    para evitar desbordamiento de pila con 10.000 nodos.
+
+    \item[DFS para romper ciclos]
+    La alternativa más simple habría sido ignorar los duplicados en \texttt{children},
+    pero el DFS con \texttt{visited} garantiza un árbol válido sin nodos repetidos.
+
+    \item[Tabla hash para construcción]
+    El \texttt{unordered\_map} permite buscar cualquier libro por ID en $O(1)$ durante
+    \texttt{build()}, manteniendo la construcción total en $O(n \cdot m)$.
+\end{description}
+
+\end{document}

@@ -4,7 +4,7 @@ project(Tarea2_XML CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# PugiXML — single source file, included directly
+# PugiXML — incluir la libreria directamente en el proyecto
 set(PUGI_SRC libs/pugixml/pugixml.cpp)
 
 add_executable(tarea2
