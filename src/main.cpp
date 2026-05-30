@@ -30,6 +30,7 @@ int main() {
     std::cout << "\n=== listar (preorder) -> listar.txt ===\n";
     {
         auto f = openFile("listar.txt");
+        f << "id\n";
         arbol.listar(f);
     }
 
@@ -39,6 +40,7 @@ int main() {
     arbol.borrarRatings(umbral);
     {
         auto f = openFile("listar_post_borrado.txt");
+        f << "id\n";
         arbol.listar(f);
     }
 
@@ -47,6 +49,7 @@ int main() {
     std::cout << "=== precursores(" << idConsulta << ") -> precursores.txt ===\n";
     {
         auto f = openFile("precursores.txt");
+        f << "id\n";
         arbol.precursores(idConsulta, f);
     }
 
