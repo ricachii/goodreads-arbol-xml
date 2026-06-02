@@ -127,6 +127,9 @@ public:
      * Parámetro:
      *   os — flujo de salida (por defecto std::cout).
      *
+     * Parámetro:
+     *   os — flujo de salida (por defecto std::cout).
+     *
      * Complejidad: O(n).
      */
     void stats(std::ostream& os = std::cout) const;
