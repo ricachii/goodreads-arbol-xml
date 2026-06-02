@@ -22,7 +22,7 @@ sin ciclos.
 
 - CMake >= 3.16
 - Compilador C++17 (GCC 8+, Clang 7+, MSVC 2017+)
-- PugiXML - ya incluido en `libs/pugixml/`
+- PugiXML — ya incluido en `libs/pugixml/`
 
 ---
 
@@ -54,7 +54,7 @@ Los resultados se generan en `build/`:
 |---|---|
 | `listar.txt` | IDs de todos los libros en preorder |
 | `listar_post_borrado.txt` | IDs tras eliminar libros con rating <= 3.5 |
-| `precursores.txt` | IDs de libros cuyo anio es menor al de todos sus similares |
+| `precursores.txt` | IDs de libros cuyo año es menor al de todos sus similares |
 
 Cada archivo comienza con la columna `id`.
 
@@ -62,12 +62,14 @@ Cada archivo comienza con la columna `id`.
 
 ## Tests
 
+El proyecto incluye un programa de tests con datos reales del dataset:
+
 ```bash
 cd build
 ./tests
 ```
 
-Verifica las tres funciones con 4 libros reales del dataset (id=1, 153795, 201341, 15842230).
+Verifica las tres funciones requeridas con 4 libros reales (id=1, 153795, 201341, 15842230).
 
 ---
 
@@ -79,19 +81,19 @@ Tarea2/
 ├── README.md
 ├── data/                  <- 10.000 archivos .xml del dataset
 ├── documentation/
-│   ├── comprension_problema.md
-│   └── documentacion.tex
+│   ├── comprension_problema.md  <- explicacion del problema
+│   └── documentacion.tex        <- documentacion LaTeX
 ├── libs/
-│   └── pugixml/
+│   └── pugixml/           <- pugixml.hpp, pugixml.cpp, pugiconfig.hpp
 ├── tests/
 │   ├── data/              <- 4 XMLs reales para tests
-│   └── test_main.cpp
+│   └── test_main.cpp      <- programa de tests
 └── src/
-    ├── Book.h
-    ├── TreeNode.h
-    ├── GeneralTree.h/cpp
-    ├── XMLParser.h/cpp
-    └── main.cpp
+    ├── Book.h             <- structs Book y SimilarBook
+    ├── TreeNode.h         <- nodo del arbol general
+    ├── GeneralTree.h/cpp  <- arbol con listar, borrarRatings, precursores, stats
+    ├── XMLParser.h/cpp    <- parseo de XML con PugiXML
+    └── main.cpp           <- punto de entrada
 ```
 
 ---
@@ -99,23 +101,27 @@ Tarea2/
 ## Funciones implementadas
 
 ### `listar(os)`
-Preorder iterativo con pila explicita. Escribe cada ID al stream `os`.
+Recorre el arbol en preorder (nodo antes que sus hijos) e imprime cada ID.
+Implementacion iterativa con pila explicita para evitar stack overflow.
 
 ### `borrarRatings(r)`
-Post-order recursivo. Elimina nodos con `averageRating <= r` y su subarbol.
+Elimina todos los nodos con `averageRating <= r` y su subrarbol completo.
+Recorrido post-order: los hijos se evaluan antes que el padre.
 
 ### `precursores(id, os)`
-Iterativo. Lista libros donde todos sus similares tienen `publication_year` mayor al del libro.
-Similares con anio 0 (campo vacio en XML) excluyen al nodo del resultado.
+Lista los libros donde todos sus `similar_books` tienen `publication_year`
+estrictamente mayor al del libro. Libros similares con año 0 (campo vacio en el XML)
+se tratan como anteriores y excluyen al nodo del resultado.
 
 ### `stats()`
-Estadisticas del arbol: nodos totales, altura maxima, promedio de hijos, libro mas conectado.
+Imprime estadisticas del arbol: nodos totales, altura maxima,
+promedio de hijos por nodo y libro con mas conexiones.
 
 ---
 
 ## Decisiones de disenio
 
-- `build()` usa DFS con `visited` para romper ciclos del grafo bidireccional
-- IDs ordenados numericamente antes del DFS para arbol determinístico
+- `build()` usa DFS con conjunto `visited` para romper los ciclos del grafo bidireccional
+- Los IDs se ordenan numericamente antes del DFS para que el arbol sea determinístico
 - `addBook()` ignora IDs duplicados para evitar memory leak
-- Recorridos `listar` y `precursores` son iterativos (evitan stack overflow)
+- Los recorridos `listar` y `precursores` son iterativos (pila explicita)

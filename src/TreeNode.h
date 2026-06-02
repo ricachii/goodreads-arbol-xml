@@ -12,7 +12,4 @@ struct TreeNode {
     std::vector<TreeNode*>  children;
 
     explicit TreeNode(const Book& b) : book(b) {}
-
-    // TODO: agregar un destructor si quieres que el nodo elimine
-    //       recursivamente su subárbol al ser liberado.
 };

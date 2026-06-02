@@ -15,3 +15,12 @@ add_executable(tarea2
 )
 
 target_include_directories(tarea2 PRIVATE src libs/pugixml)
+
+# Tests
+add_executable(tests
+    tests/test_main.cpp
+    src/XMLParser.cpp
+    src/GeneralTree.cpp
+    ${PUGI_SRC}
+)
+target_include_directories(tests PRIVATE src libs/pugixml)

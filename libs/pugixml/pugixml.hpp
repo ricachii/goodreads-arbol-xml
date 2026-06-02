@@ -37,7 +37,8 @@
 #endif
 
 // Check if std::string_view is available
-#if !defined(PUGIXML_HAS_STRING_VIEW) && !defined(PUGIXML_NO_STL)
+// Note: C++17 is required for std::string_view; if the user did not explicitly enable it, check if the compiler supports it and enable automatically
+#if !defined(PUGIXML_HAS_STRING_VIEW) && !defined(PUGIXML_NO_STL) 
 #	if __cplusplus >= 201703L
 #		define PUGIXML_HAS_STRING_VIEW
 #	elif defined(_MSVC_LANG) && _MSVC_LANG >= 201703L
