@@ -166,7 +166,7 @@ void GeneralTree::precursores(const std::string& /*id*/, std::ostream& os) const
 
 
 // ---------------------------------------------------------------------------
-// stats — estadísticas generales del árbol en un único recorrido
+// stats — estadísticas generales del árbol en un único recorrido DFS
 // ---------------------------------------------------------------------------
 void GeneralTree::stats(std::ostream& os) const {
     if (root_->children.empty()) {
